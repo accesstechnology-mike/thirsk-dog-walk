@@ -3,7 +3,8 @@ import type { AvailabilitySlot, Venue } from "../types";
 import type { AcuityConfig } from "../types";
 import {
   APP_TIMEZONE,
-  isWithinWindow,
+  earliestArrivalIso,
+  isReachableSlot,
   londonDateKeys,
   type SearchWindow,
 } from "../time-window";
@@ -20,6 +21,7 @@ type AcuityAppointmentType = {
   private?: boolean;
   type?: string;
   calendarIDs: number[];
+  addonIDs?: number[];
 };
 
 type AcuityCalendar = {
@@ -120,24 +122,32 @@ function looksLikePrivateHire(type: AcuityAppointmentType): boolean {
   return true;
 }
 
+/**
+ * Modern Acuity SPA deep links.
+ * - No required add-ons: `/appointment/.../calendar/.../datetime/...` opens the info form with time locked.
+ * - Required add-ons (Hopewell dog-count etc.): datetime links bounce; land on Date & Time for that service instead.
+ */
 function bookingUrl(
   business: AcuityBusiness,
   type: AcuityAppointmentType,
   calendarId: number,
   datetime: string,
-): string {
-  const base =
-    business.prettyUrl?.replace(/\/$/, "") ||
-    `https://app.acuityscheduling.com/schedule.php?owner=${business.id}`;
-  const params = new URLSearchParams({
-    appointmentType: String(type.id),
-    calendarID: String(calendarId),
-    datetime,
-  });
-  if (base.includes("schedule.php")) {
-    return `${base}&${params.toString()}`;
+): { url: string; timePreselected: boolean } {
+  const ownerKey = business.ownerKey;
+  const base = `https://app.acuityscheduling.com/schedule/${ownerKey}/appointment/${type.id}/calendar/${calendarId}`;
+  const hasAddons = (type.addonIDs?.length ?? 0) > 0;
+
+  if (!hasAddons) {
+    return {
+      url: `${base}/datetime/${encodeURIComponent(datetime)}`,
+      timePreselected: true,
+    };
   }
-  return `${base}?${params.toString()}`;
+
+  return {
+    url: `${base}?appointmentTypeIds[]=${type.id}&calendarIds=${calendarId}`,
+    timePreselected: false,
+  };
 }
 
 export async function fetchAcuitySlots(
@@ -188,38 +198,49 @@ export async function fetchAcuitySlots(
         `${ACUITY_BASE}/availability/times?${params}`,
       );
 
-      for (const [day, daySlots] of Object.entries(times)) {
-        if (!dateKeys.includes(day)) continue;
-        for (const entry of daySlots) {
-          if (!entry.slotsAvailable) continue;
-          const start = parseISO(entry.time);
-          if (!isWithinWindow(start, window)) continue;
-          const calendar = calendarById.get(calendarId);
-          const facility =
-            type.category?.trim() ||
-            calendar?.name?.trim() ||
-            venue.name;
-          const dedupeKey = `${venue.id}|${facility}|${entry.time}|${type.duration}`;
-          if (seen.has(dedupeKey)) continue;
-          seen.add(dedupeKey);
-          const end = addMinutes(start, type.duration);
-          slots.push({
-            id: `acuity-${venue.id}-${type.id}-${calendarId}-${entry.time}`,
-            venueId: venue.id,
-            venueName: venue.name,
-            facility,
-            serviceName: type.name,
-            start: start.toISOString(),
-            end: end.toISOString(),
-            durationMinutes: type.duration,
-            price: type.price ?? null,
-            currency: business.currencyAbbreviation ?? "GBP",
-            bookingUrl: bookingUrl(business, type, calendarId, entry.time),
-            driveMinutes,
-            provider: "acuity",
-          });
+      const ingest = (daySlotsMap: TimesResponse) => {
+        for (const [day, daySlots] of Object.entries(daySlotsMap)) {
+          if (!dateKeys.includes(day)) continue;
+          for (const entry of daySlots) {
+            if (!entry.slotsAvailable) continue;
+            const start = parseISO(entry.time);
+            if (
+              !isReachableSlot(start, window.leaveAt, driveMinutes, window)
+            ) {
+              continue;
+            }
+            const calendar = calendarById.get(calendarId);
+            const facility =
+              type.category?.trim() ||
+              calendar?.name?.trim() ||
+              venue.name;
+            const dedupeKey = `${venue.id}|${facility}|${entry.time}|${type.duration}`;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+            const end = addMinutes(start, type.duration);
+            const book = bookingUrl(business, type, calendarId, entry.time);
+            slots.push({
+              id: `acuity-${venue.id}-${type.id}-${calendarId}-${entry.time}`,
+              venueId: venue.id,
+              venueName: venue.name,
+              facility,
+              serviceName: type.name,
+              start: start.toISOString(),
+              end: end.toISOString(),
+              durationMinutes: type.duration,
+              price: type.price ?? null,
+              currency: business.currencyAbbreviation ?? "GBP",
+              bookingUrl: book.url,
+              driveMinutes,
+              earliestArrival: earliestArrivalIso(window.leaveAt, driveMinutes),
+              timePreselected: book.timePreselected,
+              provider: "acuity",
+            });
+          }
         }
-      }
+      };
+
+      ingest(times);
 
       // If tomorrow wasn't covered, fetch tomorrow explicitly.
       if (dateKeys[1]) {
@@ -233,38 +254,7 @@ export async function fetchAcuitySlots(
         const times2 = await fetchJson<TimesResponse>(
           `${ACUITY_BASE}/availability/times?${params2}`,
         );
-        for (const [day, daySlots] of Object.entries(times2)) {
-          if (!dateKeys.includes(day)) continue;
-          for (const entry of daySlots) {
-            if (!entry.slotsAvailable) continue;
-            const start = parseISO(entry.time);
-            if (!isWithinWindow(start, window)) continue;
-            const calendar = calendarById.get(calendarId);
-            const facility =
-              type.category?.trim() ||
-              calendar?.name?.trim() ||
-              venue.name;
-            const dedupeKey = `${venue.id}|${facility}|${entry.time}|${type.duration}`;
-            if (seen.has(dedupeKey)) continue;
-            seen.add(dedupeKey);
-            const end = addMinutes(start, type.duration);
-            slots.push({
-              id: `acuity-${venue.id}-${type.id}-${calendarId}-${entry.time}`,
-              venueId: venue.id,
-              venueName: venue.name,
-              facility,
-              serviceName: type.name,
-              start: start.toISOString(),
-              end: end.toISOString(),
-              durationMinutes: type.duration,
-              price: type.price ?? null,
-              currency: business.currencyAbbreviation ?? "GBP",
-              bookingUrl: bookingUrl(business, type, calendarId, entry.time),
-              driveMinutes,
-              provider: "acuity",
-            });
-          }
-        }
+        ingest(times2);
       }
     }
   }

@@ -71,6 +71,13 @@ export type AvailabilitySlot = {
   currency: string | null;
   bookingUrl: string;
   driveMinutes: number;
+  /** leaveAt + driveMinutes for this venue */
+  earliestArrival: string;
+  /**
+   * True when the booking URL should open with this slot's time already chosen.
+   * False when the park's widget still needs a time confirm (e.g. Acuity add-ons).
+   */
+  timePreselected: boolean;
   provider: ProviderId;
 };
 
@@ -83,9 +90,13 @@ export type VenueFetchError = {
 export type AvailabilityResponse = {
   originPostcode: string;
   generatedAt: string;
+  leaveAt: string;
+  includeTomorrow: boolean;
+  /** Same as leaveAt — slots are then filtered per venue by leaveAt + drive. */
   windowStart: string;
   windowEnd: string;
   maxDriveMinutes: number;
+  filterSummary: string;
   slots: AvailabilitySlot[];
   errors: VenueFetchError[];
   driveTimes: Record<string, number>;

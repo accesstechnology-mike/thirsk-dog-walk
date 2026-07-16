@@ -3,7 +3,8 @@ import { fromZonedTime } from "date-fns-tz";
 import type { AmeliaConfig, AvailabilitySlot, Venue } from "../types";
 import {
   APP_TIMEZONE,
-  isWithinWindow,
+  earliestArrivalIso,
+  isReachableSlot,
   londonDateKeys,
   type SearchWindow,
 } from "../time-window";
@@ -129,9 +130,15 @@ export async function fetchAmeliaSlots(
       for (const time of Object.keys(times)) {
         const localIso = `${day}T${time}:00`;
         const start = fromZonedTime(localIso, APP_TIMEZONE);
-        if (!isWithinWindow(start, window)) continue;
+        if (!isReachableSlot(start, window.leaveAt, driveMinutes, window)) {
+          continue;
+        }
         const durationMinutes = Math.round(service.duration / 60);
         const facility = categoryById.get(service.categoryId ?? -1) ?? venue.name;
+        // Amelia's public book page doesn't reliably honour deep-linked times;
+        // open booking with service context where possible.
+        const bookingUrl =
+          `${config.bookingUrl}?serviceId=${service.id}&date=${day}&time=${encodeURIComponent(time)}`;
         slots.push({
           id: `amelia-${venue.id}-${service.id}-${day}-${time}`,
           venueId: venue.id,
@@ -143,8 +150,10 @@ export async function fetchAmeliaSlots(
           durationMinutes,
           price: String(service.price),
           currency: "GBP",
-          bookingUrl: config.bookingUrl,
+          bookingUrl,
           driveMinutes,
+          earliestArrival: earliestArrivalIso(window.leaveAt, driveMinutes),
+          timePreselected: false,
           provider: "amelia",
         });
       }

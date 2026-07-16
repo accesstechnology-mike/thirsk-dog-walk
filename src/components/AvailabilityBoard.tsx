@@ -2,6 +2,10 @@
 
 import { useEffect, useState, useTransition } from "react";
 import type { AvailabilityResponse, AvailabilitySlot } from "@/lib/types";
+import {
+  fromDatetimeLocalValue,
+  toDatetimeLocalValue,
+} from "@/lib/time-window";
 
 function formatWhen(iso: string): { day: string; time: string } {
   const d = new Date(iso);
@@ -30,28 +34,33 @@ function formatPrice(slot: AvailabilitySlot): string | null {
   }).format(n);
 }
 
-function formatWindow(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
+function roundToMinute(date: Date): Date {
+  const d = new Date(date);
+  d.setSeconds(0, 0);
+  return d;
 }
 
 export function AvailabilityBoard() {
+  const [leaveLocal, setLeaveLocal] = useState(() =>
+    toDatetimeLocalValue(roundToMinute(new Date())),
+  );
+  const [includeTomorrow, setIncludeTomorrow] = useState(false);
   const [data, setData] = useState<AvailabilityResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function load() {
+  function load(nextLeave = leaveLocal, nextTomorrow = includeTomorrow) {
     startTransition(async () => {
       setError(null);
       try {
-        const res = await fetch("/api/availability", { cache: "no-store" });
+        const leaveAt = fromDatetimeLocalValue(nextLeave);
+        const params = new URLSearchParams({
+          leaveAt: leaveAt.toISOString(),
+          includeTomorrow: nextTomorrow ? "1" : "0",
+        });
+        const res = await fetch(`/api/availability?${params}`, {
+          cache: "no-store",
+        });
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as {
             error?: string;
@@ -68,6 +77,7 @@ export function AvailabilityBoard() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, []);
 
   return (
@@ -76,20 +86,39 @@ export function AvailabilityBoard() {
         <p className="brand">Thirsk Dog Walk</p>
         <h1>Open 1-hour fields near YO7 4SQ</h1>
         <p className="lede">
-          Live slots from now + 30 minutes through end of tomorrow, within about
-          30 minutes&apos; drive. Book on the venue&apos;s own site.
+          Set when you&apos;re leaving the house. We only show slots that start
+          after you can arrive (leave time + drive).
         </p>
-        <div className="cta-row">
-          <button type="button" className="refresh" onClick={load} disabled={isPending}>
-            {isPending ? "Checking parks…" : "Refresh availability"}
+
+        <form
+          className="leave-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            load();
+          }}
+        >
+          <label className="leave-field">
+            <span>Leaving home</span>
+            <input
+              type="datetime-local"
+              value={leaveLocal}
+              onChange={(e) => setLeaveLocal(e.target.value)}
+            />
+          </label>
+          <label className="tomorrow-field">
+            <input
+              type="checkbox"
+              checked={includeTomorrow}
+              onChange={(e) => setIncludeTomorrow(e.target.checked)}
+            />
+            <span>Include tomorrow</span>
+          </label>
+          <button type="submit" className="refresh" disabled={isPending}>
+            {isPending ? "Checking parks…" : "Show slots"}
           </button>
-          {data ? (
-            <p className="meta">
-              Window {formatWindow(data.windowStart)} →{" "}
-              {formatWindow(data.windowEnd)}
-            </p>
-          ) : null}
-        </div>
+        </form>
+
+        {data ? <p className="meta">{data.filterSummary}</p> : null}
       </header>
 
       {error ? <p className="banner error">{error}</p> : null}
@@ -103,8 +132,8 @@ export function AvailabilityBoard() {
           <section className="slot-section" aria-live="polite">
             <h2>
               {data.slots.length
-                ? `${data.slots.length} open slot${data.slots.length === 1 ? "" : "s"}`
-                : "No open 1-hour slots in range"}
+                ? `${data.slots.length} reachable slot${data.slots.length === 1 ? "" : "s"}`
+                : "No reachable 1-hour slots for that leave time"}
             </h2>
             <ul className="slot-list">
               {data.slots.map((slot) => {
@@ -128,6 +157,9 @@ export function AvailabilityBoard() {
                         {slot.driveMinutes} min drive
                         {price ? ` · ${price}` : ""}
                         {` · ${slot.durationMinutes} min`}
+                        {!slot.timePreselected
+                          ? " · confirm time on their site"
+                          : ""}
                       </p>
                     </div>
                     <a

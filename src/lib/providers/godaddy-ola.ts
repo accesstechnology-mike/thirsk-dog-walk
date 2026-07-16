@@ -1,6 +1,10 @@
 import { addMinutes, parseISO } from "date-fns";
 import type { AvailabilitySlot, GoDaddyOlaConfig, Venue } from "../types";
-import { isWithinWindow, type SearchWindow } from "../time-window";
+import {
+  earliestArrivalIso,
+  isReachableSlot,
+  type SearchWindow,
+} from "../time-window";
 import { isTargetDuration } from "../venues";
 
 const OLA_ACCOUNT_ID = "25ade4ec-9abb-4f65-8be9-ed60eebb023d";
@@ -81,8 +85,14 @@ export async function fetchGoDaddyOlaSlots(
 
     for (const [timeKey] of Object.entries(times.available_times ?? {})) {
       const start = parseISO(timeKey);
-      if (!isWithinWindow(start, window)) continue;
+      if (!isReachableSlot(start, window.leaveAt, driveMinutes, window)) {
+        continue;
+      }
       const facility = facilityBySlug.get(service.slug) ?? venue.name;
+      // OLA reads start_time from the query string into the booking widget.
+      const bookingUrl =
+        `${config.bookingBaseUrl}/${service.slug}` +
+        `?start_time=${encodeURIComponent(timeKey)}`;
       slots.push({
         id: `ola-${venue.id}-${service.id}-${timeKey}`,
         venueId: venue.id,
@@ -94,8 +104,10 @@ export async function fetchGoDaddyOlaSlots(
         durationMinutes: mins,
         price: service.cost ?? null,
         currency: "GBP",
-        bookingUrl: `${config.bookingBaseUrl}/${service.slug}`,
+        bookingUrl,
         driveMinutes,
+        earliestArrival: earliestArrivalIso(window.leaveAt, driveMinutes),
+        timePreselected: true,
         provider: "godaddy-ola",
       });
     }

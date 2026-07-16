@@ -102,6 +102,48 @@ a {
   margin-top: 1.4rem;
 }
 
+.leave-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.85rem 1rem;
+  margin-top: 1.35rem;
+}
+
+.leave-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: rgba(243, 247, 239, 0.9);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.leave-field input[type="datetime-local"] {
+  border: 1px solid rgba(243, 247, 239, 0.25);
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--fg);
+  font: inherit;
+  min-width: min(100%, 17rem);
+}
+
+.tomorrow-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(243, 247, 239, 0.88);
+  font-size: 0.92rem;
+  padding-bottom: 0.7rem;
+}
+
+.tomorrow-field input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+}
+
 .refresh {
   border: 0;
   border-radius: 999px;
