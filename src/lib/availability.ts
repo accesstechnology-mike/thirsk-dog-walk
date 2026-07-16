@@ -7,11 +7,29 @@ import { MAX_DRIVE_MINUTES, ORIGIN, VENUES } from "./venues";
 
 const CACHE_TTL_MS = 90_000;
 
-export async function getAvailability(): Promise<AvailabilityResponse> {
-  const cached = getCached<AvailabilityResponse>("availability:v1");
+export type AvailabilityQuery = {
+  leaveAt?: Date;
+  includeTomorrow?: boolean;
+};
+
+function cacheKey(leaveAt: Date, includeTomorrow: boolean): string {
+  // Round leaveAt to the minute so refreshes within the same minute hit cache.
+  const rounded = new Date(leaveAt);
+  rounded.setSeconds(0, 0);
+  return `availability:v2:${rounded.toISOString()}:t${includeTomorrow ? 1 : 0}`;
+}
+
+export async function getAvailability(
+  query: AvailabilityQuery = {},
+): Promise<AvailabilityResponse> {
+  const window = getSearchWindow({
+    leaveAt: query.leaveAt,
+    includeTomorrow: query.includeTomorrow,
+  });
+  const key = cacheKey(window.leaveAt, window.includeTomorrow);
+  const cached = getCached<AvailabilityResponse>(key);
   if (cached) return cached;
 
-  const window = getSearchWindow();
   const driveTimes = await getDriveTimesMinutes();
 
   const inRange = VENUES.filter((venue) => {
@@ -45,7 +63,6 @@ export async function getAvailability(): Promise<AvailabilityResponse> {
     }
   });
 
-  // Also report venues skipped for drive distance
   for (const venue of VENUES) {
     const mins = driveTimes[venue.id];
     if (typeof mins === "number" && mins > MAX_DRIVE_MINUTES) {
@@ -66,17 +83,24 @@ export async function getAvailability(): Promise<AvailabilityResponse> {
     (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
   );
 
+  const filterSummary = window.includeTomorrow
+    ? "Slots that start after you can arrive (leave time + drive), through end of tomorrow"
+    : "Slots that start after you can arrive (leave time + drive), through end of your leave day";
+
   const response: AvailabilityResponse = {
     originPostcode: ORIGIN.postcode,
     generatedAt: new Date().toISOString(),
+    leaveAt: window.leaveAt.toISOString(),
+    includeTomorrow: window.includeTomorrow,
     windowStart: window.windowStart.toISOString(),
     windowEnd: window.windowEnd.toISOString(),
     maxDriveMinutes: MAX_DRIVE_MINUTES,
+    filterSummary,
     slots: uniqueSlots,
     errors,
     driveTimes,
   };
 
-  setCached("availability:v1", response, CACHE_TTL_MS);
+  setCached(key, response, CACHE_TTL_MS);
   return response;
 }

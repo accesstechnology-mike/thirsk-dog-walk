@@ -3,7 +3,8 @@ import { fromZonedTime } from "date-fns-tz";
 import type { AvailabilitySlot, Venue, WixConfig } from "../types";
 import {
   APP_TIMEZONE,
-  isWithinWindow,
+  earliestArrivalIso,
+  isReachableSlot,
   type SearchWindow,
 } from "../time-window";
 import { isTargetDuration } from "../venues";
@@ -161,9 +162,17 @@ export async function fetchWixSlots(
       if (!slot.bookable) continue;
       const start = fromZonedTime(slot.localStartDate, APP_TIMEZONE);
       const end = fromZonedTime(slot.localEndDate, APP_TIMEZONE);
-      if (!isWithinWindow(start, window)) continue;
+      if (!isReachableSlot(start, window.leaveAt, driveMinutes, window)) {
+        continue;
+      }
       const mins = differenceInMinutes(end, start);
       if (!isTargetDuration(mins)) continue;
+
+      const date = slot.localStartDate.slice(0, 10);
+      const time = slot.localStartDate.slice(11, 16);
+      const bookingUrl =
+        `${config.siteOrigin}${path.startsWith("/") ? path : `/${path}`}` +
+        `?date=${date}&time=${encodeURIComponent(time)}`;
 
       slots.push({
         id: `wix-${venue.id}-${service.id}-${slot.localStartDate}`,
@@ -176,8 +185,11 @@ export async function fetchWixSlots(
         durationMinutes: mins,
         price,
         currency,
-        bookingUrl: `${config.siteOrigin}${path.startsWith("/") ? path : `/${path}`}`,
+        bookingUrl,
         driveMinutes,
+        earliestArrival: earliestArrivalIso(window.leaveAt, driveMinutes),
+        // Wix calendar deep-links are best-effort; user may still tap the slot.
+        timePreselected: false,
         provider: "wix",
       });
     }
