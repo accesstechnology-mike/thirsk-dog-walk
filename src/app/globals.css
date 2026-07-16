@@ -50,21 +50,13 @@ a {
 
 .hero {
   position: relative;
-  padding: 2.4rem 0 1.5rem;
-  animation: rise 700ms ease-out both;
-}
-
-.hero::before {
-  content: "";
-  position: absolute;
-  inset: -1rem -1.25rem auto;
-  height: 220px;
+  padding: 2.1rem 1.35rem 1.55rem;
+  margin: 0 -0.15rem;
   border-radius: 28px;
   background:
-    linear-gradient(135deg, rgba(36, 61, 45, 0.95), rgba(26, 46, 34, 0.88)),
+    linear-gradient(135deg, rgba(36, 61, 45, 0.96), rgba(26, 46, 34, 0.9)),
     url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-  z-index: -1;
-  animation: wash 1.1s ease-out both;
+  animation: rise 700ms ease-out both, wash 1.1s ease-out both;
 }
 
 .brand {
@@ -167,8 +159,8 @@ a {
 }
 
 .meta {
-  margin: 0;
-  color: rgba(243, 247, 239, 0.75);
+  margin: 0.85rem 0 0;
+  color: rgba(243, 247, 239, 0.88);
   font-size: 0.92rem;
 }
 
@@ -310,9 +302,8 @@ a {
     padding-top: 1.4rem;
   }
 
-  .hero::before {
-    inset: -0.5rem -0.65rem auto;
-    height: 260px;
+  .hero {
+    padding: 1.6rem 1rem 1.25rem;
   }
 
   .slot-row {
