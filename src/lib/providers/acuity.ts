@@ -123,10 +123,15 @@ function looksLikePrivateHire(type: AcuityAppointmentType): boolean {
 }
 
 /**
- * Modern Acuity SPA deep links.
- * - No required add-ons: `/appointment/.../calendar/.../datetime/...` opens the info form with time locked.
- * - Required add-ons (Hopewell dog-count etc.): datetime links bounce; land on Date & Time for that service instead.
+ * Acuity availability times use `+0100`; SPA deep links need RFC3339 `+01:00`.
+ * Working form:
+ * `/schedule/{owner}/appointment/{type}/calendar/{cal}/datetime/{iso}?appointmentTypeIds[]={type}&calendarIds={cal}`
  */
+function acuityDatetimePathSegment(datetime: string): string {
+  const withColonOffset = datetime.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  return encodeURIComponent(withColonOffset);
+}
+
 function bookingUrl(
   business: AcuityBusiness,
   type: AcuityAppointmentType,
@@ -134,19 +139,17 @@ function bookingUrl(
   datetime: string,
 ): { url: string; timePreselected: boolean } {
   const ownerKey = business.ownerKey;
-  const base = `https://app.acuityscheduling.com/schedule/${ownerKey}/appointment/${type.id}/calendar/${calendarId}`;
-  const hasAddons = (type.addonIDs?.length ?? 0) > 0;
-
-  if (!hasAddons) {
-    return {
-      url: `${base}/datetime/${encodeURIComponent(datetime)}`,
-      timePreselected: true,
-    };
-  }
-
+  const path =
+    `https://app.acuityscheduling.com/schedule/${ownerKey}` +
+    `/appointment/${type.id}/calendar/${calendarId}` +
+    `/datetime/${acuityDatetimePathSegment(datetime)}`;
+  const params = new URLSearchParams({
+    "appointmentTypeIds[]": String(type.id),
+    calendarIds: String(calendarId),
+  });
   return {
-    url: `${base}?appointmentTypeIds[]=${type.id}&calendarIds=${calendarId}`,
-    timePreselected: false,
+    url: `${path}?${params.toString()}`,
+    timePreselected: true,
   };
 }
 
