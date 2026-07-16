@@ -57,7 +57,12 @@ export async function getAvailability(): Promise<AvailabilityResponse> {
     }
   }
 
-  slots.sort(
+  const deduped = new Map<string, AvailabilitySlot>();
+  for (const slot of slots) {
+    const key = `${slot.venueId}|${slot.facility}|${slot.start}|${slot.durationMinutes}`;
+    if (!deduped.has(key)) deduped.set(key, slot);
+  }
+  const uniqueSlots = [...deduped.values()].sort(
     (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
   );
 
@@ -67,7 +72,7 @@ export async function getAvailability(): Promise<AvailabilityResponse> {
     windowStart: window.windowStart.toISOString(),
     windowEnd: window.windowEnd.toISOString(),
     maxDriveMinutes: MAX_DRIVE_MINUTES,
-    slots,
+    slots: uniqueSlots,
     errors,
     driveTimes,
   };

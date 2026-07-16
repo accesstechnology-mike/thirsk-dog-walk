@@ -12,9 +12,12 @@ export const ORIGIN = {
  */
 export const MAX_DRIVE_MINUTES = 35;
 
-/** Preferred private-hire length. Brackenfarg sells 55-minute sessions — that counts. */
+/**
+ * Preferred private-hire length.
+ * Brackenfarg sells 55-minute sessions; South Acres Thirsk is 50 minutes — both count.
+ */
 export const TARGET_DURATION_MINUTES = 60;
-export const MIN_DURATION_MINUTES = 55;
+export const MIN_DURATION_MINUTES = 50;
 export const MAX_DURATION_MINUTES = 70;
 
 export function isTargetDuration(minutes: number): boolean {

@@ -107,7 +107,14 @@ function calendarAllowed(
 
 function looksLikePrivateHire(type: AcuityAppointmentType): boolean {
   const blob = `${type.category ?? ""} ${type.name}`.toLowerCase();
-  if (blob.includes("trade") || blob.includes("package") || blob.includes("gift")) {
+  if (
+    blob.includes("trade") ||
+    blob.includes("package") ||
+    blob.includes("gift") ||
+    blob.includes("dog walker") ||
+    blob.includes("professional") ||
+    blob.includes("block booking")
+  ) {
     return false;
   }
   return true;
@@ -161,6 +168,7 @@ export async function fetchAcuitySlots(
 
   const dateKeys = londonDateKeys(window);
   const slots: AvailabilitySlot[] = [];
+  const seen = new Set<string>();
 
   for (const type of hourTypes) {
     const calendarIds = type.calendarIDs.filter((id) =>
@@ -168,19 +176,64 @@ export async function fetchAcuitySlots(
     );
 
     for (const calendarId of calendarIds) {
-      for (const startDate of dateKeys) {
-        const params = new URLSearchParams({
+      // One request per type/calendar — Acuity returns nearby days from startDate.
+      const params = new URLSearchParams({
+        owner: config.ownerKey,
+        appointmentTypeId: String(type.id),
+        calendarId: String(calendarId),
+        startDate: dateKeys[0]!,
+        timezone: APP_TIMEZONE,
+      });
+      const times = await fetchJson<TimesResponse>(
+        `${ACUITY_BASE}/availability/times?${params}`,
+      );
+
+      for (const [day, daySlots] of Object.entries(times)) {
+        if (!dateKeys.includes(day)) continue;
+        for (const entry of daySlots) {
+          if (!entry.slotsAvailable) continue;
+          const start = parseISO(entry.time);
+          if (!isWithinWindow(start, window)) continue;
+          const calendar = calendarById.get(calendarId);
+          const facility =
+            type.category?.trim() ||
+            calendar?.name?.trim() ||
+            venue.name;
+          const dedupeKey = `${venue.id}|${facility}|${entry.time}|${type.duration}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          const end = addMinutes(start, type.duration);
+          slots.push({
+            id: `acuity-${venue.id}-${type.id}-${calendarId}-${entry.time}`,
+            venueId: venue.id,
+            venueName: venue.name,
+            facility,
+            serviceName: type.name,
+            start: start.toISOString(),
+            end: end.toISOString(),
+            durationMinutes: type.duration,
+            price: type.price ?? null,
+            currency: business.currencyAbbreviation ?? "GBP",
+            bookingUrl: bookingUrl(business, type, calendarId, entry.time),
+            driveMinutes,
+            provider: "acuity",
+          });
+        }
+      }
+
+      // If tomorrow wasn't covered, fetch tomorrow explicitly.
+      if (dateKeys[1]) {
+        const params2 = new URLSearchParams({
           owner: config.ownerKey,
           appointmentTypeId: String(type.id),
           calendarId: String(calendarId),
-          startDate,
+          startDate: dateKeys[1],
           timezone: APP_TIMEZONE,
         });
-        const times = await fetchJson<TimesResponse>(
-          `${ACUITY_BASE}/availability/times?${params}`,
+        const times2 = await fetchJson<TimesResponse>(
+          `${ACUITY_BASE}/availability/times?${params2}`,
         );
-
-        for (const [day, daySlots] of Object.entries(times)) {
+        for (const [day, daySlots] of Object.entries(times2)) {
           if (!dateKeys.includes(day)) continue;
           for (const entry of daySlots) {
             if (!entry.slotsAvailable) continue;
@@ -191,6 +244,9 @@ export async function fetchAcuitySlots(
               type.category?.trim() ||
               calendar?.name?.trim() ||
               venue.name;
+            const dedupeKey = `${venue.id}|${facility}|${entry.time}|${type.duration}`;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
             const end = addMinutes(start, type.duration);
             slots.push({
               id: `acuity-${venue.id}-${type.id}-${calendarId}-${entry.time}`,

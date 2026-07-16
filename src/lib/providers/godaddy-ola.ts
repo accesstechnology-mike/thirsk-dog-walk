@@ -69,15 +69,11 @@ export async function fetchGoDaddyOlaSlots(
 
   for (const service of services) {
     const mins = parseIsoDurationMinutes(service.duration) ?? 60;
-    const resourceParam =
-      service.resource_ids?.length
-        ? `&resource_ids=${service.resource_ids.join(",")}`
-        : "";
+    // OLA 422s when resource_ids is supplied on this account — omit and let it return all.
     const timesUrl =
       `${OLA_V2}/services/${service.id}/available_times` +
       `?start_time=${encodeURIComponent(startIso)}` +
-      `&end_time=${encodeURIComponent(endIso)}` +
-      resourceParam;
+      `&end_time=${encodeURIComponent(endIso)}`;
 
     const times = await olaFetch<{
       available_times: Record<string, Array<{ resource_id: number }>>;

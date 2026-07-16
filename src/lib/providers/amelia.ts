@@ -44,15 +44,18 @@ type SlotsResponse = {
   };
 };
 
-function ameliaUrl(call: string, params: Record<string, string | number>): string {
-  const search = new URLSearchParams({
-    action: "wpamelia_api",
-    call,
-  });
+function ameliaUrl(call: string, params: Record<string, string | number> = {}): string {
+  // Amelia 404s if `call=/entities` is URL-encoded as %2Fentities — keep the slash literal.
+  const extras = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    search.set(key, String(value));
+    extras.set(key, String(value));
   }
-  return `https://dogzoneripon.co.uk/wp-admin/admin-ajax.php?${search}`;
+  const qs = extras.toString();
+  return (
+    `https://dogzoneripon.co.uk/wp-admin/admin-ajax.php` +
+    `?action=wpamelia_api&call=${call}` +
+    (qs ? `&${qs}` : "")
+  );
 }
 
 async function ameliaFetch<T>(url: string): Promise<T> {
@@ -107,19 +110,16 @@ export async function fetchAmeliaSlots(
   const slots: AvailabilitySlot[] = [];
 
   for (const service of hourServices) {
-    const params = new URLSearchParams({
-      action: "wpamelia_api",
-      call: "/slots",
-      serviceId: String(service.id),
-      persons: "1",
-      serviceDuration: String(service.duration),
-      startDateTime: `${dateKeys[0]} 00:00`,
-      endDateTime: `${dateKeys[dateKeys.length - 1]} 23:59`,
-    });
-    // Amelia expects providerIds[] query key
-    params.append("providerIds[]", String(employee.id));
+    const url =
+      `https://dogzoneripon.co.uk/wp-admin/admin-ajax.php` +
+      `?action=wpamelia_api&call=/slots` +
+      `&serviceId=${service.id}` +
+      `&persons=1` +
+      `&serviceDuration=${service.duration}` +
+      `&startDateTime=${encodeURIComponent(`${dateKeys[0]} 00:00`)}` +
+      `&endDateTime=${encodeURIComponent(`${dateKeys[dateKeys.length - 1]} 23:59`)}` +
+      `&providerIds[]=${employee.id}`;
 
-    const url = `https://dogzoneripon.co.uk/wp-admin/admin-ajax.php?${params}`;
     const payload = await ameliaFetch<SlotsResponse>(url);
     const dayMap = payload.data?.slots ?? {};
 
