@@ -56,6 +56,11 @@ export type Venue = {
   location: LatLng;
   website?: string;
   providerConfig: VenueProviderConfig;
+  /**
+   * Facility name substrings (case-insensitive) marked as favourites in the UI.
+   * Matched against live facility labels from the booking provider.
+   */
+  favouriteFacilityIncludes?: string[];
 };
 
 export type AvailabilitySlot = {
