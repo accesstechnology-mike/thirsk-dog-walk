@@ -305,6 +305,12 @@ async function checkUi(apiData) {
     const select = multiRow.locator(".time-select");
     const options = await select.locator("option").count();
     assert(options > 1, `time dropdown has multiple options (${options})`);
+    const labels = await select.locator("option").allTextContents();
+    const timeOnly = labels.every((o) => /^\d{2}:\d{2}$/.test(o.trim()));
+    assert(
+      timeOnly,
+      `dropdown shows time only when same day (got ${labels.slice(0, 5).join(", ")})`,
+    );
     const beforeHref = await multiRow.locator(".book").getAttribute("href");
     const values = await select.locator("option").evaluateAll((opts) =>
       opts.map((o) => o.value),
@@ -316,7 +322,7 @@ async function checkUi(apiData) {
         !!afterHref && afterHref !== beforeHref,
         `changing time updates Book URL`,
       );
-      notes.push(`OK: time dropdown updates Book (${options} options)`);
+      notes.push(`OK: time dropdown updates Book (${options} options, time-only)`);
     }
   } else {
     notes.push("no multi-time row to exercise dropdown (skipped)");

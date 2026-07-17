@@ -25,8 +25,20 @@ function formatWhen(iso: string): { day: string; time: string } {
   return { day, time };
 }
 
-function formatSlotOption(iso: string): string {
+function londonDayKey(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+/** Time only — the row already shows the date. Add weekday only if times span days. */
+function formatSlotOption(iso: string, allStarts: string[]): string {
   const { day, time } = formatWhen(iso);
+  const days = new Set(allStarts.map(londonDayKey));
+  if (days.size <= 1) return time;
   return `${day} ${time}`;
 }
 
@@ -114,7 +126,10 @@ function AreaSlotRow({
             >
               {slots.map((slot) => (
                 <option key={slot.id} value={slot.id}>
-                  {formatSlotOption(slot.start)}
+                  {formatSlotOption(
+                    slot.start,
+                    slots.map((s) => s.start),
+                  )}
                 </option>
               ))}
             </select>
@@ -147,7 +162,6 @@ function AreaSlotRow({
           {selected.driveMinutes} min drive
           {price ? ` · ${price}` : ""}
           {` · ${selected.durationMinutes} min`}
-          {multi ? ` · ${slots.length} times` : ""}
           {!selected.timePreselected ? " · confirm time on their site" : ""}
         </p>
       </div>

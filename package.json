@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify": "node scripts/verify-e2e.mjs"
+    "verify": "node scripts/verify-e2e.mjs",
+    "check-ui": "node scripts/check-ui.mjs"
   },
   "dependencies": {
     "date-fns": "^4.4.0",
