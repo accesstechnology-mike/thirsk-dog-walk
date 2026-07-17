@@ -25,6 +25,11 @@ function formatWhen(iso: string): { day: string; time: string } {
   return { day, time };
 }
 
+function formatSlotOption(iso: string): string {
+  const { day, time } = formatWhen(iso);
+  return `${day} ${time}`;
+}
+
 function formatPrice(slot: AvailabilitySlot): string | null {
   if (!slot.price) return null;
   const n = Number(slot.price);
@@ -42,8 +47,8 @@ function roundToMinute(date: Date): Date {
 }
 
 type AreaRow = {
-  next: AvailabilitySlot;
-  totalSlots: number;
+  key: string;
+  slots: AvailabilitySlot[];
   favourite: boolean;
 };
 
@@ -55,7 +60,7 @@ function areaKey(slot: AvailabilitySlot): string {
   return `${slot.venueId}\0${slot.facility}`;
 }
 
-/** One row per park area/field — soonest slot for that area. */
+/** One row per park area/field — all reachable times for that area. */
 function areasFromSlots(slots: AvailabilitySlot[]): AreaRow[] {
   const byArea = new Map<string, AreaRow>();
   for (const slot of slots) {
@@ -63,18 +68,99 @@ function areasFromSlots(slots: AvailabilitySlot[]): AreaRow[] {
     const favourite = isFavouriteFacility(slot.venueId, slot.facility);
     const existing = byArea.get(key);
     if (!existing) {
-      byArea.set(key, { next: slot, totalSlots: 1, favourite });
+      byArea.set(key, { key, slots: [slot], favourite });
       continue;
     }
-    existing.totalSlots += 1;
-    if (slotTime(slot) < slotTime(existing.next)) {
-      existing.next = slot;
-    }
+    existing.slots.push(slot);
   }
-  return [...byArea.values()].sort((a, b) => {
-    if (a.favourite !== b.favourite) return a.favourite ? -1 : 1;
-    return slotTime(a.next) - slotTime(b.next);
-  });
+  return [...byArea.values()]
+    .map((row) => ({
+      ...row,
+      slots: [...row.slots].sort((a, b) => slotTime(a) - slotTime(b)),
+    }))
+    .sort((a, b) => {
+      if (a.favourite !== b.favourite) return a.favourite ? -1 : 1;
+      return slotTime(a.slots[0]!) - slotTime(b.slots[0]!);
+    });
+}
+
+function AreaSlotRow({
+  slots,
+  favourite,
+}: {
+  slots: AvailabilitySlot[];
+  favourite: boolean;
+}) {
+  const [selectedId, setSelectedId] = useState(slots[0]!.id);
+  const selected =
+    slots.find((s) => s.id === selectedId) ?? slots[0]!;
+  const when = formatWhen(selected.start);
+  const price = formatPrice(selected);
+  const multi = slots.length > 1;
+
+  return (
+    <li className={favourite ? "slot-row slot-row-favourite" : "slot-row"}>
+      <div className="when">
+        <span className="day">{when.day}</span>
+        {multi ? (
+          <label className="time-picker">
+            <span className="sr-only">
+              Choose time for {selected.venueName} {selected.facility}
+            </span>
+            <select
+              className="time-select"
+              value={selected.id}
+              onChange={(e) => setSelectedId(e.target.value)}
+            >
+              {slots.map((slot) => (
+                <option key={slot.id} value={slot.id}>
+                  {formatSlotOption(slot.start)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="time">{when.time}</span>
+        )}
+      </div>
+      <div className="details">
+        <p className="venue">
+          {favourite ? (
+            <span
+              className="favourite-star"
+              title="Favourite field"
+              aria-label="Favourite"
+            >
+              ★
+            </span>
+          ) : null}
+          {selected.venueName}
+        </p>
+        <p className="facility">
+          {selected.facility}
+          {selected.facility !== selected.serviceName
+            ? ` · ${selected.serviceName}`
+            : ""}
+          {favourite ? " · favourite" : ""}
+        </p>
+        <p className="sub">
+          {selected.driveMinutes} min drive
+          {price ? ` · ${price}` : ""}
+          {` · ${selected.durationMinutes} min`}
+          {multi ? ` · ${slots.length} times` : ""}
+          {!selected.timePreselected ? " · confirm time on their site" : ""}
+        </p>
+      </div>
+      <a
+        className="book"
+        href={selected.bookingUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Book
+      </a>
+    </li>
+  );
 }
 
 export function AvailabilityBoard() {
@@ -175,65 +261,13 @@ export function AvailabilityBoard() {
                 : "No reachable 1-hour slots for that leave time"}
             </h2>
             <ul className="slot-list">
-              {areas.map(({ next: slot, totalSlots, favourite }) => {
-                const when = formatWhen(slot.start);
-                const price = formatPrice(slot);
-                const more =
-                  totalSlots > 1
-                    ? ` · ${totalSlots - 1} more time${totalSlots - 1 === 1 ? "" : "s"}`
-                    : "";
-                return (
-                  <li
-                    key={areaKey(slot)}
-                    className={
-                      favourite ? "slot-row slot-row-favourite" : "slot-row"
-                    }
-                  >
-                    <div className="when">
-                      <span className="day">{when.day}</span>
-                      <span className="time">{when.time}</span>
-                    </div>
-                    <div className="details">
-                      <p className="venue">
-                        {favourite ? (
-                          <span
-                            className="favourite-star"
-                            title="Favourite field"
-                            aria-label="Favourite"
-                          >
-                            ★
-                          </span>
-                        ) : null}
-                        {slot.venueName}
-                      </p>
-                      <p className="facility">
-                        {slot.facility}
-                        {slot.facility !== slot.serviceName
-                          ? ` · ${slot.serviceName}`
-                          : ""}
-                        {favourite ? " · favourite" : ""}
-                      </p>
-                      <p className="sub">
-                        {slot.driveMinutes} min drive
-                        {price ? ` · ${price}` : ""}
-                        {` · ${slot.durationMinutes} min`}
-                        {more}
-                        {!slot.timePreselected
-                          ? " · confirm time on their site"
-                          : ""}
-                      </p>
-                    </div>
-                    <a
-                      className="book"
-                      href={slot.bookingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Book
-                    </a>
-                  </li>
-                );
-              })}
+              {areas.map((area) => (
+                <AreaSlotRow
+                  key={`${area.key}-${data.generatedAt}`}
+                  slots={area.slots}
+                  favourite={area.favourite}
+                />
+              ))}
             </ul>
           </section>
 
