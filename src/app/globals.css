@@ -280,20 +280,21 @@ a {
 
 .time-select {
   appearance: none;
-  width: 100%;
-  max-width: 9.5rem;
+  width: auto;
+  min-width: 5.25rem;
+  max-width: 8.5rem;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 0.35rem 1.6rem 0.35rem 0.5rem;
+  padding: 0.35rem 1.55rem 0.35rem 0.45rem;
   background:
     linear-gradient(45deg, transparent 50%, var(--fg-soft) 50%) calc(100% - 12px) calc(50% - 2px) / 6px 6px no-repeat,
     linear-gradient(135deg, var(--fg-soft) 50%, transparent 50%) calc(100% - 7px) calc(50% - 2px) / 6px 6px no-repeat,
     rgba(255, 255, 255, 0.92);
   color: var(--fg);
   font-family: var(--font-display);
-  font-size: 1.15rem;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
   cursor: pointer;
 }
 
