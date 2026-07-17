@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import type { AvailabilityResponse, AvailabilitySlot } from "@/lib/types";
 import {
   fromDatetimeLocalValue,
+  roundToNearestQuarterHour,
   toDatetimeLocalValue,
 } from "@/lib/time-window";
 import { isFavouriteFacility } from "@/lib/venues";
@@ -25,23 +26,6 @@ function formatWhen(iso: string): { day: string; time: string } {
   return { day, time };
 }
 
-function londonDayKey(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(iso));
-}
-
-/** Time only — the row already shows the date. Add weekday only if times span days. */
-function formatSlotOption(iso: string, allStarts: string[]): string {
-  const { day, time } = formatWhen(iso);
-  const days = new Set(allStarts.map(londonDayKey));
-  if (days.size <= 1) return time;
-  return `${day} ${time}`;
-}
-
 function formatPrice(slot: AvailabilitySlot): string | null {
   if (!slot.price) return null;
   const n = Number(slot.price);
@@ -50,12 +34,6 @@ function formatPrice(slot: AvailabilitySlot): string | null {
     style: "currency",
     currency: slot.currency || "GBP",
   }).format(n);
-}
-
-function roundToMinute(date: Date): Date {
-  const d = new Date(date);
-  d.setSeconds(0, 0);
-  return d;
 }
 
 type AreaRow = {
@@ -104,8 +82,7 @@ function AreaSlotRow({
   favourite: boolean;
 }) {
   const [selectedId, setSelectedId] = useState(slots[0]!.id);
-  const selected =
-    slots.find((s) => s.id === selectedId) ?? slots[0]!;
+  const selected = slots.find((s) => s.id === selectedId) ?? slots[0]!;
   const when = formatWhen(selected.start);
   const price = formatPrice(selected);
   const multi = slots.length > 1;
@@ -126,10 +103,7 @@ function AreaSlotRow({
             >
               {slots.map((slot) => (
                 <option key={slot.id} value={slot.id}>
-                  {formatSlotOption(
-                    slot.start,
-                    slots.map((s) => s.start),
-                  )}
+                  {formatWhen(slot.start).time}
                 </option>
               ))}
             </select>
@@ -179,21 +153,19 @@ function AreaSlotRow({
 
 export function AvailabilityBoard() {
   const [leaveLocal, setLeaveLocal] = useState(() =>
-    toDatetimeLocalValue(roundToMinute(new Date())),
+    toDatetimeLocalValue(roundToNearestQuarterHour(new Date())),
   );
-  const [includeTomorrow, setIncludeTomorrow] = useState(false);
   const [data, setData] = useState<AvailabilityResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function load(nextLeave = leaveLocal, nextTomorrow = includeTomorrow) {
+  function load(nextLeave = leaveLocal) {
     startTransition(async () => {
       setError(null);
       try {
         const leaveAt = fromDatetimeLocalValue(nextLeave);
         const params = new URLSearchParams({
           leaveAt: leaveAt.toISOString(),
-          includeTomorrow: nextTomorrow ? "1" : "0",
         });
         const res = await fetch(`/api/availability?${params}`, {
           cache: "no-store",
@@ -226,7 +198,8 @@ export function AvailabilityBoard() {
         <h1>Open 1-hour fields near YO7 4SQ</h1>
         <p className="lede">
           Set when you&apos;re leaving the house. We only show slots that start
-          after you can arrive (leave time + drive).
+          after you can arrive (leave time + drive), through the end of that
+          day.
         </p>
 
         <form
@@ -240,17 +213,21 @@ export function AvailabilityBoard() {
             <span>Leaving home</span>
             <input
               type="datetime-local"
+              step={900}
               value={leaveLocal}
-              onChange={(e) => setLeaveLocal(e.target.value)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (!raw) {
+                  setLeaveLocal(raw);
+                  return;
+                }
+                setLeaveLocal(
+                  toDatetimeLocalValue(
+                    roundToNearestQuarterHour(fromDatetimeLocalValue(raw)),
+                  ),
+                );
+              }}
             />
-          </label>
-          <label className="tomorrow-field">
-            <input
-              type="checkbox"
-              checked={includeTomorrow}
-              onChange={(e) => setIncludeTomorrow(e.target.checked)}
-            />
-            <span>Include tomorrow</span>
           </label>
           <button type="submit" className="refresh" disabled={isPending}>
             {isPending ? "Checking parks…" : "Show slots"}

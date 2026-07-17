@@ -96,7 +96,6 @@ export type AvailabilityResponse = {
   originPostcode: string;
   generatedAt: string;
   leaveAt: string;
-  includeTomorrow: boolean;
   /** Same as leaveAt — slots are then filtered per venue by leaveAt + drive. */
   windowStart: string;
   windowEnd: string;

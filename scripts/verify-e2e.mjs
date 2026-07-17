@@ -46,7 +46,6 @@ async function checkApi() {
   leaveAt.setMinutes(leaveAt.getMinutes() + 30, 0, 0);
   const params = new URLSearchParams({
     leaveAt: leaveAt.toISOString(),
-    includeTomorrow: "0",
   });
   const res = await fetch(`${BASE}/api/availability?${params}`, {
     cache: "no-store",
@@ -60,6 +59,10 @@ async function checkApi() {
     "API has filterSummary",
   );
   assert(Array.isArray(data.errors), "API errors is array");
+  assert(
+    data.includeTomorrow === undefined,
+    "API no longer exposes includeTomorrow",
+  );
 
   const venues = new Set(data.slots.map((s) => s.venueId));
   assert(venues.size >= 4, `at least 4 venues in results (got ${venues.size})`);
@@ -85,7 +88,6 @@ async function checkApi() {
   later.setHours(later.getHours() + 6);
   const params2 = new URLSearchParams({
     leaveAt: later.toISOString(),
-    includeTomorrow: "0",
   });
   const res2 = await fetch(`${BASE}/api/availability?${params2}`, {
     cache: "no-store",
@@ -94,20 +96,6 @@ async function checkApi() {
   assert(
     data2.slots.length <= data.slots.length,
     `later leave reduces/equal slots (${data.slots.length} -> ${data2.slots.length})`,
-  );
-
-  // include tomorrow → more or equal
-  const params3 = new URLSearchParams({
-    leaveAt: leaveAt.toISOString(),
-    includeTomorrow: "1",
-  });
-  const res3 = await fetch(`${BASE}/api/availability?${params3}`, {
-    cache: "no-store",
-  });
-  const data3 = await res3.json();
-  assert(
-    data3.slots.length >= data.slots.length,
-    `includeTomorrow expands/equal slots (${data.slots.length} -> ${data3.slots.length})`,
   );
 
   // slot starts after leave+drive
@@ -203,42 +191,35 @@ async function checkUi(apiData) {
     `lede is light-colored for dark hero (got ${ledeColor.color})`,
   );
 
+  assert(
+    (await page.locator(".tomorrow-field").count()) === 0,
+    "Include tomorrow control removed",
+  );
+
+  const leaveStep = await page
+    .locator('input[type="datetime-local"]')
+    .getAttribute("step");
+  assert(leaveStep === "900", `leave picker step is 15 minutes (got ${leaveStep})`);
+
   // Hero panel must wrap the form — compare bottoms
   const layout = await page.evaluate(() => {
     const hero = document.querySelector(".hero");
     const form = document.querySelector(".leave-form");
     const meta = document.querySelector(".meta");
-    const tomorrow = document.querySelector(".tomorrow-field");
     if (!hero || !form) return null;
     const hb = hero.getBoundingClientRect();
     const fb = form.getBoundingClientRect();
     const mb = meta?.getBoundingClientRect();
-    const tb = tomorrow?.getBoundingClientRect();
-    const heroBg = getComputedStyle(hero).backgroundImage || getComputedStyle(hero).backgroundColor;
-    const tomorrowColor = tomorrow ? getComputedStyle(tomorrow).color : null;
     return {
       heroBottom: hb.bottom,
       formBottom: fb.bottom,
-      metaBottom: mb?.bottom ?? null,
-      tomorrowBottom: tb?.bottom ?? null,
       formInsideHero: fb.bottom <= hb.bottom + 1,
       metaInsideHero: mb ? mb.bottom <= hb.bottom + 1 : true,
-      heroBg: heroBg.slice(0, 80),
-      tomorrowColor,
     };
   });
   assert(!!layout, "hero/form layout measurable");
   assert(layout.formInsideHero, `leave form inside dark hero panel (formBottom=${layout?.formBottom}, heroBottom=${layout?.heroBottom})`);
   assert(layout.metaInsideHero, `filter meta inside dark hero panel`);
-
-  // Contrast: tomorrow label should be light on dark
-  if (layout.tomorrowColor) {
-    const trgb = layout.tomorrowColor.match(/\d+/g)?.map(Number) || [];
-    assert(
-      trgb[0] > 180 && trgb[1] > 180 && trgb[2] > 180,
-      `Include tomorrow label is light (${layout.tomorrowColor})`,
-    );
-  }
 
   await page.screenshot({
     path: join(ARTIFACTS, "home-desktop.png"),
@@ -335,25 +316,29 @@ async function checkUi(apiData) {
     assert(acuityDatetimeOk(href), `first Book Acuity URL has datetime (${href})`);
   }
 
-  // Toggle include tomorrow — more fields or same
+  // Later leave time via picker should not increase field count
   const before = fieldCount;
-  await page.locator(".tomorrow-field input").check();
-  await page.locator("button.refresh").click();
-  await page.waitForFunction(
-    () => {
-      const t = document.querySelector(".slot-section h2")?.textContent || "";
-      return /field/i.test(t) || /No reachable/.test(t);
-    },
-    null,
-    { timeout: 60_000 },
-  );
-  await page.waitForTimeout(500);
+  const leaveInput = page.locator('input[type="datetime-local"]');
+  const currentLeave = await leaveInput.inputValue();
+  const [datePart, timePart] = currentLeave.split("T");
+  const [hh, mm] = timePart.split(":").map(Number);
+  const laterMins = Math.min(hh * 60 + mm + 180, 22 * 60);
+  const laterLeave = `${datePart}T${String(Math.floor(laterMins / 60)).padStart(2, "0")}:${String(laterMins % 60).padStart(2, "0")}`;
+  await leaveInput.fill(laterLeave);
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes("/api/availability") && r.ok(),
+      { timeout: 60_000 },
+    ),
+    page.locator("button.refresh").click(),
+  ]);
+  await page.waitForTimeout(400);
   const afterText = await page.locator(".slot-section h2").textContent();
   const after = Number(afterText?.match(/(\d+)/)?.[1] || 0);
-  assert(after >= before, `include tomorrow fields >= before (${before} -> ${after})`);
+  assert(after <= before, `later leave fields <= before (${before} -> ${after})`);
 
   await page.screenshot({
-    path: join(ARTIFACTS, "home-tomorrow.png"),
+    path: join(ARTIFACTS, "home-later-leave.png"),
     fullPage: false,
   });
 
