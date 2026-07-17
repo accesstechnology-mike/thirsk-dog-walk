@@ -40,6 +40,29 @@ function roundToMinute(date: Date): Date {
   return d;
 }
 
+/** One row per park: soonest reachable slot, plus how many other times exist. */
+function parksFromSlots(slots: AvailabilitySlot[]) {
+  const byVenue = new Map<
+    string,
+    { next: AvailabilitySlot; totalSlots: number }
+  >();
+  for (const slot of slots) {
+    const existing = byVenue.get(slot.venueId);
+    if (!existing) {
+      byVenue.set(slot.venueId, { next: slot, totalSlots: 1 });
+      continue;
+    }
+    existing.totalSlots += 1;
+    if (new Date(slot.start).getTime() < new Date(existing.next.start).getTime()) {
+      existing.next = slot;
+    }
+  }
+  return [...byVenue.values()].sort(
+    (a, b) =>
+      new Date(a.next.start).getTime() - new Date(b.next.start).getTime(),
+  );
+}
+
 export function AvailabilityBoard() {
   const [leaveLocal, setLeaveLocal] = useState(() =>
     toDatetimeLocalValue(roundToMinute(new Date())),
@@ -79,6 +102,8 @@ export function AvailabilityBoard() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, []);
+
+  const parks = data ? parksFromSlots(data.slots) : [];
 
   return (
     <div className="board">
@@ -131,16 +156,20 @@ export function AvailabilityBoard() {
         <>
           <section className="slot-section" aria-live="polite">
             <h2>
-              {data.slots.length
-                ? `${data.slots.length} reachable slot${data.slots.length === 1 ? "" : "s"}`
+              {parks.length
+                ? `${parks.length} park${parks.length === 1 ? "" : "s"} with a reachable slot`
                 : "No reachable 1-hour slots for that leave time"}
             </h2>
             <ul className="slot-list">
-              {data.slots.map((slot) => {
+              {parks.map(({ next: slot, totalSlots }) => {
                 const when = formatWhen(slot.start);
                 const price = formatPrice(slot);
+                const more =
+                  totalSlots > 1
+                    ? ` · ${totalSlots - 1} more time${totalSlots - 1 === 1 ? "" : "s"}`
+                    : "";
                 return (
-                  <li key={slot.id} className="slot-row">
+                  <li key={slot.venueId} className="slot-row">
                     <div className="when">
                       <span className="day">{when.day}</span>
                       <span className="time">{when.time}</span>
@@ -148,7 +177,7 @@ export function AvailabilityBoard() {
                     <div className="details">
                       <p className="venue">{slot.venueName}</p>
                       <p className="facility">
-                        {slot.facility}
+                        Next: {slot.facility}
                         {slot.facility !== slot.serviceName
                           ? ` · ${slot.serviceName}`
                           : ""}
@@ -157,6 +186,7 @@ export function AvailabilityBoard() {
                         {slot.driveMinutes} min drive
                         {price ? ` · ${price}` : ""}
                         {` · ${slot.durationMinutes} min`}
+                        {more}
                         {!slot.timePreselected
                           ? " · confirm time on their site"
                           : ""}
