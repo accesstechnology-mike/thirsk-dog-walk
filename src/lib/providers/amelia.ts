@@ -101,11 +101,15 @@ export async function fetchAmeliaSlots(
 
   const hourServices = entities.data.categories
     .flatMap((c) => c.serviceList.map((s) => ({ ...s, categoryId: c.id })))
-    .filter(
-      (s) =>
-        s.status === "visible" &&
-        isTargetDuration(Math.round(s.duration / 60)),
-    );
+    .filter((s) => {
+      if (s.status !== "visible") return false;
+      if (!isTargetDuration(Math.round(s.duration / 60))) return false;
+      const category = categoryById.get(s.categoryId ?? -1) ?? "";
+      const blob = `${category} ${s.name}`.toLowerCase();
+      // Private hire for one car only — skip 2-vehicle products.
+      if (/\b2\s*vehicles?\b|\btwo\s*vehicles?\b/.test(blob)) return false;
+      return true;
+    });
 
   const dateKeys = londonDateKeys(window);
   const slots: AvailabilitySlot[] = [];
