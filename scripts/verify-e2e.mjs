@@ -257,11 +257,41 @@ async function checkUi(apiData) {
   });
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  const slotCountText = await page.locator(".slot-section h2").textContent();
-  const uiCount = Number(slotCountText?.match(/(\d+)/)?.[1] || 0);
-  assert(uiCount > 0, `UI shows slot count (${uiCount})`);
-  // UI leaveAt is "now"; API fixture uses now+30m — counts will differ.
-  notes.push(`UI slot count=${uiCount}; API fixture count=${apiData.slots.length}`);
+  const heading = await page.locator(".slot-section h2").textContent();
+  assert(/park/i.test(heading || ""), `UI heading lists parks (${heading})`);
+  const parkCount = Number(heading?.match(/(\d+)/)?.[1] || 0);
+  assert(parkCount > 0, `UI shows park count (${parkCount})`);
+  const rowCount = await page.locator(".slot-row").count();
+  assert(
+    rowCount === parkCount,
+    `one row per park (rows=${rowCount}, heading=${parkCount})`,
+  );
+  const venueNames = await page
+    .locator(".slot-row .venue")
+    .allTextContents();
+  assert(
+    new Set(venueNames).size === venueNames.length,
+    `park names unique in list (${venueNames.length} rows)`,
+  );
+  notes.push(
+    `UI parks=${parkCount}; API slots=${apiData.slots.length}; unique venues in API=${new Set(apiData.slots.map((s) => s.venueId)).size}`,
+  );
+
+  const bgFixed = await page.evaluate(() => {
+    const s = getComputedStyle(document.documentElement);
+    return {
+      attachment: s.backgroundAttachment,
+      repeat: s.backgroundRepeat,
+    };
+  });
+  assert(
+    bgFixed.attachment.includes("fixed"),
+    `page background is fixed (got ${bgFixed.attachment})`,
+  );
+  assert(
+    !bgFixed.repeat.split(",").some((p) => p.trim() === "repeat"),
+    `page background does not tile (got ${bgFixed.repeat})`,
+  );
 
   const firstBook = page.locator(".slot-row .book").first();
   const href = await firstBook.getAttribute("href");
@@ -270,22 +300,22 @@ async function checkUi(apiData) {
     assert(acuityDatetimeOk(href), `first Book Acuity URL has datetime (${href})`);
   }
 
-  // Toggle include tomorrow and resubmit
-  const before = uiCount;
+  // Toggle include tomorrow — more parks or same, never drops to empty if before > 0
+  const before = parkCount;
   await page.locator(".tomorrow-field input").check();
   await page.locator("button.refresh").click();
   await page.waitForFunction(
-    (prev) => {
+    () => {
       const t = document.querySelector(".slot-section h2")?.textContent || "";
-      const n = Number(t.match(/(\d+)/)?.[1] || 0);
-      return n !== prev || /No reachable/.test(t);
+      return /park/i.test(t) || /No reachable/.test(t);
     },
-    before,
+    null,
     { timeout: 60_000 },
   );
+  await page.waitForTimeout(500);
   const afterText = await page.locator(".slot-section h2").textContent();
   const after = Number(afterText?.match(/(\d+)/)?.[1] || 0);
-  assert(after >= before, `include tomorrow increases/equal slots (${before} -> ${after})`);
+  assert(after >= before, `include tomorrow parks >= before (${before} -> ${after})`);
 
   await page.screenshot({
     path: join(ARTIFACTS, "home-tomorrow.png"),
