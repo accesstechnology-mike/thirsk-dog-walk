@@ -41,46 +41,38 @@ function roundToMinute(date: Date): Date {
   return d;
 }
 
-type ParkRow = {
+type AreaRow = {
   next: AvailabilitySlot;
   totalSlots: number;
-  favouriteAvailable: boolean;
+  favourite: boolean;
 };
 
 function slotTime(slot: AvailabilitySlot): number {
   return new Date(slot.start).getTime();
 }
 
-function preferSlot(current: AvailabilitySlot, candidate: AvailabilitySlot): AvailabilitySlot {
-  const currentFav = isFavouriteFacility(current.venueId, current.facility);
-  const candidateFav = isFavouriteFacility(candidate.venueId, candidate.facility);
-  if (candidateFav && !currentFav) return candidate;
-  if (currentFav && !candidateFav) return current;
-  return slotTime(candidate) < slotTime(current) ? candidate : current;
+function areaKey(slot: AvailabilitySlot): string {
+  return `${slot.venueId}\0${slot.facility}`;
 }
 
-/** One row per park: prefer soonest favourite field when one is open. */
-function parksFromSlots(slots: AvailabilitySlot[]): ParkRow[] {
-  const byVenue = new Map<string, ParkRow>();
+/** One row per park area/field — soonest slot for that area. */
+function areasFromSlots(slots: AvailabilitySlot[]): AreaRow[] {
+  const byArea = new Map<string, AreaRow>();
   for (const slot of slots) {
+    const key = areaKey(slot);
     const favourite = isFavouriteFacility(slot.venueId, slot.facility);
-    const existing = byVenue.get(slot.venueId);
+    const existing = byArea.get(key);
     if (!existing) {
-      byVenue.set(slot.venueId, {
-        next: slot,
-        totalSlots: 1,
-        favouriteAvailable: favourite,
-      });
+      byArea.set(key, { next: slot, totalSlots: 1, favourite });
       continue;
     }
     existing.totalSlots += 1;
-    existing.favouriteAvailable = existing.favouriteAvailable || favourite;
-    existing.next = preferSlot(existing.next, slot);
-  }
-  return [...byVenue.values()].sort((a, b) => {
-    if (a.favouriteAvailable !== b.favouriteAvailable) {
-      return a.favouriteAvailable ? -1 : 1;
+    if (slotTime(slot) < slotTime(existing.next)) {
+      existing.next = slot;
     }
+  }
+  return [...byArea.values()].sort((a, b) => {
+    if (a.favourite !== b.favourite) return a.favourite ? -1 : 1;
     return slotTime(a.next) - slotTime(b.next);
   });
 }
@@ -125,7 +117,7 @@ export function AvailabilityBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, []);
 
-  const parks = data ? parksFromSlots(data.slots) : [];
+  const areas = data ? areasFromSlots(data.slots) : [];
 
   return (
     <div className="board">
@@ -178,27 +170,23 @@ export function AvailabilityBoard() {
         <>
           <section className="slot-section" aria-live="polite">
             <h2>
-              {parks.length
-                ? `${parks.length} park${parks.length === 1 ? "" : "s"} with a reachable slot`
+              {areas.length
+                ? `${areas.length} field${areas.length === 1 ? "" : "s"} with a reachable slot`
                 : "No reachable 1-hour slots for that leave time"}
             </h2>
             <ul className="slot-list">
-              {parks.map(({ next: slot, totalSlots, favouriteAvailable }) => {
+              {areas.map(({ next: slot, totalSlots, favourite }) => {
                 const when = formatWhen(slot.start);
                 const price = formatPrice(slot);
                 const more =
                   totalSlots > 1
                     ? ` · ${totalSlots - 1} more time${totalSlots - 1 === 1 ? "" : "s"}`
                     : "";
-                const nextIsFavourite = isFavouriteFacility(
-                  slot.venueId,
-                  slot.facility,
-                );
                 return (
                   <li
-                    key={slot.venueId}
+                    key={areaKey(slot)}
                     className={
-                      favouriteAvailable ? "slot-row slot-row-favourite" : "slot-row"
+                      favourite ? "slot-row slot-row-favourite" : "slot-row"
                     }
                   >
                     <div className="when">
@@ -207,10 +195,10 @@ export function AvailabilityBoard() {
                     </div>
                     <div className="details">
                       <p className="venue">
-                        {favouriteAvailable ? (
+                        {favourite ? (
                           <span
                             className="favourite-star"
-                            title="Favourite field available"
+                            title="Favourite field"
                             aria-label="Favourite"
                           >
                             ★
@@ -219,15 +207,11 @@ export function AvailabilityBoard() {
                         {slot.venueName}
                       </p>
                       <p className="facility">
-                        Next: {slot.facility}
+                        {slot.facility}
                         {slot.facility !== slot.serviceName
                           ? ` · ${slot.serviceName}`
                           : ""}
-                        {favouriteAvailable && !nextIsFavourite
-                          ? " · favourite field also open"
-                          : nextIsFavourite
-                            ? " · favourite"
-                            : ""}
+                        {favourite ? " · favourite" : ""}
                       </p>
                       <p className="sub">
                         {slot.driveMinutes} min drive

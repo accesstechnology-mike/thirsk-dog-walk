@@ -258,23 +258,30 @@ async function checkUi(apiData) {
   await page.setViewportSize({ width: 1280, height: 900 });
 
   const heading = await page.locator(".slot-section h2").textContent();
-  assert(/park/i.test(heading || ""), `UI heading lists parks (${heading})`);
-  const parkCount = Number(heading?.match(/(\d+)/)?.[1] || 0);
-  assert(parkCount > 0, `UI shows park count (${parkCount})`);
+  assert(/field/i.test(heading || ""), `UI heading lists fields (${heading})`);
+  const fieldCount = Number(heading?.match(/(\d+)/)?.[1] || 0);
+  assert(fieldCount > 0, `UI shows field count (${fieldCount})`);
   const rowCount = await page.locator(".slot-row").count();
   assert(
-    rowCount === parkCount,
-    `one row per park (rows=${rowCount}, heading=${parkCount})`,
+    rowCount === fieldCount,
+    `one row per field (rows=${rowCount}, heading=${fieldCount})`,
   );
-  const venueNames = await page
-    .locator(".slot-row .venue")
-    .allTextContents();
+  const rowKeys = await page.evaluate(() =>
+    [...document.querySelectorAll(".slot-row")].map(
+      (r) =>
+        `${r.querySelector(".venue")?.textContent?.trim()}|${r.querySelector(".facility")?.textContent?.trim()}`,
+    ),
+  );
   assert(
-    new Set(venueNames).size === venueNames.length,
-    `park names unique in list (${venueNames.length} rows)`,
+    new Set(rowKeys).size === rowKeys.length,
+    `venue+facility rows unique (${rowKeys.length})`,
   );
+  const hopewellAreas = rowKeys.filter((k) => k.includes("Hopewell"));
+  if (hopewellAreas.length) {
+    notes.push(`Hopewell areas: ${hopewellAreas.join(" ; ")}`);
+  }
   notes.push(
-    `UI parks=${parkCount}; API slots=${apiData.slots.length}; unique venues in API=${new Set(apiData.slots.map((s) => s.venueId)).size}`,
+    `UI fields=${fieldCount}; API slots=${apiData.slots.length}; unique areas in API=${new Set(apiData.slots.map((s) => `${s.venueId}|${s.facility}`)).size}`,
   );
 
   const bgFixed = await page.evaluate(() => {
@@ -300,14 +307,14 @@ async function checkUi(apiData) {
     assert(acuityDatetimeOk(href), `first Book Acuity URL has datetime (${href})`);
   }
 
-  // Toggle include tomorrow — more parks or same, never drops to empty if before > 0
-  const before = parkCount;
+  // Toggle include tomorrow — more fields or same
+  const before = fieldCount;
   await page.locator(".tomorrow-field input").check();
   await page.locator("button.refresh").click();
   await page.waitForFunction(
     () => {
       const t = document.querySelector(".slot-section h2")?.textContent || "";
-      return /park/i.test(t) || /No reachable/.test(t);
+      return /field/i.test(t) || /No reachable/.test(t);
     },
     null,
     { timeout: 60_000 },
@@ -315,7 +322,7 @@ async function checkUi(apiData) {
   await page.waitForTimeout(500);
   const afterText = await page.locator(".slot-section h2").textContent();
   const after = Number(afterText?.match(/(\d+)/)?.[1] || 0);
-  assert(after >= before, `include tomorrow parks >= before (${before} -> ${after})`);
+  assert(after >= before, `include tomorrow fields >= before (${before} -> ${after})`);
 
   await page.screenshot({
     path: join(ARTIFACTS, "home-tomorrow.png"),
