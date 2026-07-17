@@ -300,6 +300,28 @@ async function checkUi(apiData) {
     `page background does not tile (got ${bgFixed.repeat})`,
   );
 
+  const multiRow = page.locator(".slot-row").filter({ has: page.locator(".time-select") }).first();
+  if (await multiRow.count()) {
+    const select = multiRow.locator(".time-select");
+    const options = await select.locator("option").count();
+    assert(options > 1, `time dropdown has multiple options (${options})`);
+    const beforeHref = await multiRow.locator(".book").getAttribute("href");
+    const values = await select.locator("option").evaluateAll((opts) =>
+      opts.map((o) => o.value),
+    );
+    if (values[1]) {
+      await select.selectOption(values[1]);
+      const afterHref = await multiRow.locator(".book").getAttribute("href");
+      assert(
+        !!afterHref && afterHref !== beforeHref,
+        `changing time updates Book URL`,
+      );
+      notes.push(`OK: time dropdown updates Book (${options} options)`);
+    }
+  } else {
+    notes.push("no multi-time row to exercise dropdown (skipped)");
+  }
+
   const firstBook = page.locator(".slot-row .book").first();
   const href = await firstBook.getAttribute("href");
   assert(!!href && href.startsWith("http"), `Book href is absolute URL (${href})`);
