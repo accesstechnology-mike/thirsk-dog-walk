@@ -12,9 +12,8 @@ export type SearchWindow = {
    * leaveAt + driveMinutes when filtering slots.
    */
   windowStart: Date;
+  /** End of the leave calendar day in Europe/London. */
   windowEnd: Date;
-  /** If false, UI/API only returns slots on the leave calendar day. */
-  includeTomorrow: boolean;
 };
 
 function londonEndOfDay(d: Date): Date {
@@ -27,30 +26,19 @@ function londonStartOfDay(d: Date): Date {
   return fromZonedTime(startOfDay(london), APP_TIMEZONE);
 }
 
-/**
- * Fetch window from leave-at through end of leave day, or end of the next
- * London day when includeTomorrow is set.
- */
+/** Fetch window from leave-at through end of that London calendar day. */
 export function getSearchWindow(options?: {
   now?: Date;
   leaveAt?: Date;
-  includeTomorrow?: boolean;
 }): SearchWindow {
   const now = options?.now ?? new Date();
   const leaveAt = options?.leaveAt ?? now;
-  const includeTomorrow = options?.includeTomorrow ?? false;
-
-  const leaveDayEnd = londonEndOfDay(leaveAt);
-  const windowEnd = includeTomorrow
-    ? londonEndOfDay(addDays(toZonedTime(leaveAt, APP_TIMEZONE), 1))
-    : leaveDayEnd;
 
   return {
     now,
     leaveAt,
     windowStart: leaveAt,
-    windowEnd,
-    includeTomorrow,
+    windowEnd: londonEndOfDay(leaveAt),
   };
 }
 
@@ -89,6 +77,20 @@ export function londonDateKeys(window: SearchWindow): string[] {
 
 export function earliestArrivalIso(leaveAt: Date, driveMinutes: number): string {
   return addMinutes(leaveAt, driveMinutes).toISOString();
+}
+
+/** Round an Instant to the nearest 15 minutes in Europe/London wall time. */
+export function roundToNearestQuarterHour(date: Date): Date {
+  const london = toZonedTime(date, APP_TIMEZONE);
+  const minutes = london.getMinutes();
+  const rounded = Math.round(minutes / 15) * 15;
+  london.setSeconds(0, 0);
+  if (rounded === 60) {
+    london.setHours(london.getHours() + 1, 0, 0, 0);
+  } else {
+    london.setMinutes(rounded);
+  }
+  return fromZonedTime(london, APP_TIMEZONE);
 }
 
 /** datetime-local value in Europe/London for an Instant. */

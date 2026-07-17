@@ -2,7 +2,7 @@
 
 Aggregator for **~1-hour** private dog-field availability within about 30 minutes of **YO7 4SQ**.
 
-Set when you're leaving home; we only show slots that start after `leaveAt + drive time` (optional: include tomorrow).
+Set when you're leaving home; we only show slots that start after `leaveAt + drive time`, through the end of that day.
 
 ## What it does
 
@@ -22,7 +22,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Availability API: `GET /api/availability?leaveAt=<ISO>&includeTomorrow=0|1`
+Availability API: `GET /api/availability?leaveAt=<ISO>`
 
 ## Verify
 
