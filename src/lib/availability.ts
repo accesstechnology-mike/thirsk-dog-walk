@@ -16,7 +16,7 @@ function cacheKey(leaveAt: Date, includeTomorrow: boolean): string {
   // Round leaveAt to the minute so refreshes within the same minute hit cache.
   const rounded = new Date(leaveAt);
   rounded.setSeconds(0, 0);
-  return `availability:v2:${rounded.toISOString()}:t${includeTomorrow ? 1 : 0}`;
+  return `availability:v3:${rounded.toISOString()}:t${includeTomorrow ? 1 : 0}`;
 }
 
 export async function getAvailability(
