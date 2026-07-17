@@ -267,6 +267,19 @@ a {
   font-size: 1.05rem;
 }
 
+.favourite-star {
+  display: inline-block;
+  margin-right: 0.35rem;
+  color: var(--accent);
+  font-size: 1.05em;
+  line-height: 1;
+  vertical-align: -0.05em;
+}
+
+.slot-row-favourite {
+  border-color: rgba(196, 92, 38, 0.35);
+}
+
 .details .facility,
 .details .sub {
   margin: 0.2rem 0 0;

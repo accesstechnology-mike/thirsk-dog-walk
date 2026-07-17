@@ -24,6 +24,18 @@ export function isTargetDuration(minutes: number): boolean {
   return minutes >= MIN_DURATION_MINUTES && minutes <= MAX_DURATION_MINUTES;
 }
 
+export function isFavouriteFacility(
+  venueId: string,
+  facility: string,
+  venues: Venue[] = VENUES,
+): boolean {
+  const venue = venues.find((v) => v.id === venueId);
+  const needles = venue?.favouriteFacilityIncludes;
+  if (!needles?.length) return false;
+  const hay = facility.toLowerCase();
+  return needles.some((n) => hay.includes(n.toLowerCase()));
+}
+
 export const VENUES: Venue[] = [
   {
     id: "hopewell",
@@ -31,6 +43,8 @@ export const VENUES: Venue[] = [
     postcode: "HG5 0SN",
     location: { lat: 54.020488, lng: -1.429159 },
     website: "https://www.hopewelldogpark.com/",
+    /** Prefer these Hopewell fields when they have a reachable slot. */
+    favouriteFacilityIncludes: ["forest walk", "woodland"],
     providerConfig: {
       provider: "acuity",
       ownerId: "23295738",
